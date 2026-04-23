@@ -49,4 +49,39 @@ public class PizzasController(IPizzasService pizzasService) : ControllerBase
             return NotFound(new { message = ex.Message });
         }
     }
+
+    [HttpPost("{id}/images")]
+    [RequestSizeLimit(25_000_000)] // tope duro a nivel transporte; el tamaño útil se valida en el service
+    public async Task<ActionResult<Pizza>> AddImage(
+        string id,
+        [FromForm] IFormFile file,
+        [FromForm] string? altText,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await pizzasService.AddImageAsync(id, file, altText, ct));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("{id}/images/{**objectKey}")]
+    public async Task<ActionResult<Pizza>> RemoveImage(string id, string objectKey, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await pizzasService.RemoveImageAsync(id, objectKey, ct));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+    }
 }

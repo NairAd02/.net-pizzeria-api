@@ -1,11 +1,15 @@
 using Microsoft.EntityFrameworkCore;
 using Pizzeria.API.Infrastructure.Database;
+using Pizzeria.API.Infrastructure.Storage;
 using Pizzeria.API.Modules.Pizzas.Dtos;
 using Pizzeria.API.Modules.Pizzas.Entities;
 
 namespace Pizzeria.API.Modules.Pizzas;
 
-public class PizzasService(PizzeriaDbContext context) : IPizzasService
+public class PizzasService(
+    PizzeriaDbContext context,
+    IStorageService storage,
+    StorageOptions storageOptions) : IPizzasService
 {
     public async Task<IReadOnlyCollection<Pizza>> FindAllAsync(CancellationToken ct = default)
     {
@@ -93,5 +97,47 @@ public class PizzasService(PizzeriaDbContext context) : IPizzasService
             pizza.BasePrice,
             ingredientsCost,
             pizza.BasePrice + ingredientsCost);
+    }
+
+    public async Task<Pizza> AddImageAsync(string id, IFormFile file, string? altText, CancellationToken ct = default)
+    {
+        ImageFileValidator.EnsureValid(file, storageOptions);
+
+        var pizza = await context.Pizzas
+            .Include(p => p.Ingredients)
+            .FirstOrDefaultAsync(p => p.Id == id, ct)
+            ?? throw new KeyNotFoundException($"Pizza '{id}' not found.");
+
+        await using var stream = file.OpenReadStream();
+        var image = await storage.UploadAsync(
+            content: stream,
+            objectKeyPrefix: $"pizzas/{id}",
+            originalFileName: file.FileName,
+            contentType: file.ContentType,
+            size: file.Length,
+            altText: altText,
+            ct: ct);
+
+        // Reemplazamos la lista (en vez de .Add) para que el ValueComparer detecte el cambio sin dudas.
+        pizza.Images = [.. pizza.Images, image];
+        await context.SaveChangesAsync(ct);
+        return pizza;
+    }
+
+    public async Task<Pizza> RemoveImageAsync(string id, string objectKey, CancellationToken ct = default)
+    {
+        var pizza = await context.Pizzas
+            .Include(p => p.Ingredients)
+            .FirstOrDefaultAsync(p => p.Id == id, ct)
+            ?? throw new KeyNotFoundException($"Pizza '{id}' not found.");
+
+        var image = pizza.Images.FirstOrDefault(i => i.Key == objectKey)
+            ?? throw new KeyNotFoundException($"Image '{objectKey}' not found on pizza '{id}'.");
+
+        await storage.DeleteAsync(image.Key, ct);
+
+        pizza.Images = pizza.Images.Where(i => i.Key != objectKey).ToList();
+        await context.SaveChangesAsync(ct);
+        return pizza;
     }
 }

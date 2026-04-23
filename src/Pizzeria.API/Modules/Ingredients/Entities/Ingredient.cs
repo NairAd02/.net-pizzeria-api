@@ -1,3 +1,5 @@
+using Pizzeria.API.Infrastructure.Storage;
+
 namespace Pizzeria.API.Modules.Ingredients.Entities;
 
 public class Ingredient
@@ -7,4 +9,5 @@ public class Ingredient
     public decimal Stock { get; set; }
     public decimal PricePerUnit { get; set; }
     public string? Supplier { get; set; }
+    public List<ProductImage> Images { get; set; } = new();
 }

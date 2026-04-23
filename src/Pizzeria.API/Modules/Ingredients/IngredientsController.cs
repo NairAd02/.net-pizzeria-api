@@ -49,4 +49,39 @@ public class IngredientsController(IIngredientsService ingredientsService) : Con
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    [HttpPost("{code}/images")]
+    [RequestSizeLimit(25_000_000)] // tope duro a nivel transporte; el tamaño útil se valida en el service
+    public async Task<ActionResult<Ingredient>> AddImage(
+        string code,
+        [FromForm] IFormFile file,
+        [FromForm] string? altText,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await ingredientsService.AddImageAsync(code, file, altText, ct));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("{code}/images/{**objectKey}")]
+    public async Task<ActionResult<Ingredient>> RemoveImage(string code, string objectKey, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await ingredientsService.RemoveImageAsync(code, objectKey, ct));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+    }
 }

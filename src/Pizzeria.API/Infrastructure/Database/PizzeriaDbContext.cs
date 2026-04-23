@@ -1,4 +1,8 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Pizzeria.API.Infrastructure.Storage;
 using Pizzeria.API.Modules.DeliveryPersons.Entities;
 using Pizzeria.API.Modules.Ingredients.Entities;
 using Pizzeria.API.Modules.Orders.Entities;
@@ -21,6 +25,27 @@ public class PizzeriaDbContext(DbContextOptions<PizzeriaDbContext> options) : Db
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
 
+    // Serializador compartido para las columnas jsonb de ProductImage[].
+    private static readonly JsonSerializerOptions ImagesJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    private static readonly ValueConverter<List<ProductImage>, string> ProductImagesConverter = new(
+        v => JsonSerializer.Serialize(v, ImagesJsonOptions),
+        v => string.IsNullOrWhiteSpace(v)
+            ? new List<ProductImage>()
+            : JsonSerializer.Deserialize<List<ProductImage>>(v, ImagesJsonOptions) ?? new List<ProductImage>());
+
+    // EF necesita un comparer explícito para detectar cambios dentro de una lista
+    // que se persiste como una sola columna (si no, añadir/quitar una imagen no se persiste).
+    private static readonly ValueComparer<List<ProductImage>> ProductImagesComparer = new(
+        (a, b) => JsonSerializer.Serialize(a, ImagesJsonOptions) == JsonSerializer.Serialize(b, ImagesJsonOptions),
+        v => v == null ? 0 : JsonSerializer.Serialize(v, ImagesJsonOptions).GetHashCode(),
+        v => JsonSerializer.Deserialize<List<ProductImage>>(
+                JsonSerializer.Serialize(v, ImagesJsonOptions), ImagesJsonOptions) ?? new List<ProductImage>());
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -42,6 +67,12 @@ public class PizzeriaDbContext(DbContextOptions<PizzeriaDbContext> options) : Db
             b.Property(i => i.Stock).HasColumnType("numeric(12, 3)");
             b.Property(i => i.PricePerUnit).HasColumnType("numeric(12, 4)");
             b.Property(i => i.Supplier).HasMaxLength(200);
+
+            b.Property(i => i.Images)
+                .HasColumnName("images")
+                .HasColumnType("jsonb")
+                .HasConversion(ProductImagesConverter)
+                .Metadata.SetValueComparer(ProductImagesComparer);
         });
     }
 
@@ -54,6 +85,12 @@ public class PizzeriaDbContext(DbContextOptions<PizzeriaDbContext> options) : Db
             b.Property(p => p.Id).HasMaxLength(64);
             b.Property(p => p.Name).HasMaxLength(200).IsRequired();
             b.Property(p => p.BasePrice).HasColumnType("numeric(12, 2)");
+
+            b.Property(p => p.Images)
+                .HasColumnName("images")
+                .HasColumnType("jsonb")
+                .HasConversion(ProductImagesConverter)
+                .Metadata.SetValueComparer(ProductImagesComparer);
 
             b.HasMany(p => p.Ingredients)
                 .WithOne()
