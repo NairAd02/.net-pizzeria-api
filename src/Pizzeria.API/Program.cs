@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using DotNetEnv;
 using Pizzeria.API.Infrastructure.Database;
+using Pizzeria.API.Infrastructure.Storage;
 using Pizzeria.API.Modules.DeliveryPersons;
 using Pizzeria.API.Modules.Ingredients;
 using Pizzeria.API.Modules.Orders;
@@ -26,6 +27,7 @@ builder.Services.AddOpenApi();
 // Registro de módulos de la aplicación (equivalente a los `imports` del AppModule de Nest).
 builder.Services
     .AddDatabaseModule()
+    .AddStorageModule()
     .AddIngredientsModule()
     .AddPizzasModule()
     .AddDeliveryPersonsModule()

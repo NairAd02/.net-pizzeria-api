@@ -68,6 +68,24 @@ Content-Type: application/json
   "quantity": 5
 }
 
+### Subir imagen al ingrediente (multipart; ajusta la ruta del archivo)
+POST {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO/images
+Content-Type: multipart/form-data; boundary=----PizzeriaBoundary
+
+------PizzeriaBoundary
+Content-Disposition: form-data; name="altText"
+
+Queso rallado sobre tabla
+------PizzeriaBoundary
+Content-Disposition: form-data; name="file"; filename="queso.jpg"
+Content-Type: image/jpeg
+
+< ./samples/queso.jpg
+------PizzeriaBoundary--
+
+### Borrar imagen del ingrediente (reemplaza {key} por el key devuelto al subirla)
+DELETE {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO/images/ingredients/ING-QUESO/{guid}.jpg
+
 
 ############################################
 # Pizzas
@@ -95,6 +113,24 @@ Accept: application/json
 ### Calcular costo (reemplaza {pizzaId} por el Id que devolvió el POST)
 GET {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/cost
 Accept: application/json
+
+### Subir imagen a una pizza (multipart; ajusta la ruta del archivo)
+POST {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/images
+Content-Type: multipart/form-data; boundary=----PizzeriaBoundary
+
+------PizzeriaBoundary
+Content-Disposition: form-data; name="altText"
+
+Margarita lista para servir
+------PizzeriaBoundary
+Content-Disposition: form-data; name="file"; filename="margarita.jpg"
+Content-Type: image/jpeg
+
+< ./samples/margarita.jpg
+------PizzeriaBoundary--
+
+### Borrar imagen de la pizza (reemplaza {pizzaId} y {guid}.ext por el key devuelto)
+DELETE {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/images/pizzas/{pizzaId}/{guid}.jpg
 
 
 ############################################
