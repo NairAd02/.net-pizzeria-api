@@ -1,0 +1,161 @@
+@Pizzeria.API_HostAddress = http://localhost:5202
+
+############################################
+# Ingredients
+############################################
+
+### Crear ingrediente: masa
+POST {{Pizzeria.API_HostAddress}}/api/ingredients
+Content-Type: application/json
+
+{
+  "code": "ING-MASA",
+  "name": "Masa",
+  "stock": 50,
+  "pricePerUnit": 1.5,
+  "supplier": "Harinas del Sur"
+}
+
+### Crear ingrediente: salsa
+POST {{Pizzeria.API_HostAddress}}/api/ingredients
+Content-Type: application/json
+
+{
+  "code": "ING-SALSA",
+  "name": "Salsa de tomate",
+  "stock": 10,
+  "pricePerUnit": 0.02,
+  "supplier": "Conservas Italia"
+}
+
+### Crear ingrediente: queso
+POST {{Pizzeria.API_HostAddress}}/api/ingredients
+Content-Type: application/json
+
+{
+  "code": "ING-QUESO",
+  "name": "Queso mozzarella",
+  "stock": 15,
+  "pricePerUnit": 0.04,
+  "supplier": "Lácteos del Valle"
+}
+
+### Crear ingrediente: albahaca
+POST {{Pizzeria.API_HostAddress}}/api/ingredients
+Content-Type: application/json
+
+{
+  "code": "ING-ALBAHACA",
+  "name": "Albahaca",
+  "stock": 2,
+  "pricePerUnit": 0.5,
+  "supplier": "Hierbas Frescas"
+}
+
+### Listar ingredientes
+GET {{Pizzeria.API_HostAddress}}/api/ingredients
+Accept: application/json
+
+### Consultar uno
+GET {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO
+Accept: application/json
+
+### Reponer stock
+PATCH {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO/stock
+Content-Type: application/json
+
+{
+  "quantity": 5
+}
+
+
+############################################
+# Pizzas
+############################################
+
+### Crear pizza Margarita
+POST {{Pizzeria.API_HostAddress}}/api/pizzas
+Content-Type: application/json
+
+{
+  "name": "Margarita",
+  "basePrice": 8,
+  "ingredients": [
+    { "ingredientCode": "ING-MASA", "quantity": 1 },
+    { "ingredientCode": "ING-SALSA", "quantity": 0.2 },
+    { "ingredientCode": "ING-QUESO", "quantity": 0.3 },
+    { "ingredientCode": "ING-ALBAHACA", "quantity": 0.01 }
+  ]
+}
+
+### Listar pizzas
+GET {{Pizzeria.API_HostAddress}}/api/pizzas
+Accept: application/json
+
+### Calcular costo (reemplaza {pizzaId} por el Id que devolvió el POST)
+GET {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/cost
+Accept: application/json
+
+
+############################################
+# Delivery persons (repartidores)
+############################################
+
+### Crear repartidor
+POST {{Pizzeria.API_HostAddress}}/api/delivery-persons
+Content-Type: application/json
+
+{
+  "code": "REP-001",
+  "name": "Juan Pérez",
+  "phone": "555-1234"
+}
+
+### Listar repartidores
+GET {{Pizzeria.API_HostAddress}}/api/delivery-persons
+Accept: application/json
+
+
+############################################
+# Orders (pedidos)
+############################################
+
+### Crear pedido (reemplaza {pizzaId} por el Id real)
+POST {{Pizzeria.API_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "customerName": "Ana Gómez",
+  "customerPhone": "555-9876",
+  "items": [
+    { "pizzaId": "{pizzaId}", "quantity": 2 }
+  ]
+}
+
+### Listar pedidos
+GET {{Pizzeria.API_HostAddress}}/api/orders
+Accept: application/json
+
+### Cambiar a "InPreparation" (reemplaza {orderId})
+PATCH {{Pizzeria.API_HostAddress}}/api/orders/{orderId}/status
+Content-Type: application/json
+
+{
+  "status": "InPreparation"
+}
+
+### Cambiar a "OnTheWay" (asigna un repartidor disponible)
+PATCH {{Pizzeria.API_HostAddress}}/api/orders/{orderId}/status
+Content-Type: application/json
+
+{
+  "status": "OnTheWay"
+}
+
+### Cambiar a "Delivered" (libera al repartidor)
+PATCH {{Pizzeria.API_HostAddress}}/api/orders/{orderId}/status
+Content-Type: application/json
+
+{
+  "status": "Delivered"
+}
