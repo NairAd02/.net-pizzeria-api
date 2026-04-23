@@ -9,22 +9,22 @@ namespace Pizzeria.API.Modules.Pizzas;
 public class PizzasController(IPizzasService pizzasService) : ControllerBase
 {
     [HttpGet]
-    public ActionResult<IEnumerable<Pizza>> FindAll() =>
-        Ok(pizzasService.FindAll());
+    public async Task<ActionResult<IEnumerable<Pizza>>> FindAll(CancellationToken ct) =>
+        Ok(await pizzasService.FindAllAsync(ct));
 
     [HttpGet("{id}")]
-    public ActionResult<Pizza> FindById(string id)
+    public async Task<ActionResult<Pizza>> FindById(string id, CancellationToken ct)
     {
-        var pizza = pizzasService.FindById(id);
+        var pizza = await pizzasService.FindByIdAsync(id, ct);
         return pizza is null ? NotFound() : Ok(pizza);
     }
 
     [HttpPost]
-    public ActionResult<Pizza> Create([FromBody] CreatePizzaDto dto)
+    public async Task<ActionResult<Pizza>> Create([FromBody] CreatePizzaDto dto, CancellationToken ct)
     {
         try
         {
-            var created = pizzasService.Create(dto);
+            var created = await pizzasService.CreateAsync(dto, ct);
             return CreatedAtAction(nameof(FindById), new { id = created.Id }, created);
         }
         catch (KeyNotFoundException ex)
@@ -38,11 +38,11 @@ public class PizzasController(IPizzasService pizzasService) : ControllerBase
     }
 
     [HttpGet("{id}/cost")]
-    public ActionResult<PizzaCostDto> CalculateCost(string id)
+    public async Task<ActionResult<PizzaCostDto>> CalculateCost(string id, CancellationToken ct)
     {
         try
         {
-            return Ok(pizzasService.CalculateCost(id));
+            return Ok(await pizzasService.CalculateCostAsync(id, ct));
         }
         catch (KeyNotFoundException ex)
         {

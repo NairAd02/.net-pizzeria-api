@@ -4,7 +4,7 @@ public static class DeliveryPersonsModule
 {
     public static IServiceCollection AddDeliveryPersonsModule(this IServiceCollection services)
     {
-        services.AddSingleton<IDeliveryPersonsService, DeliveryPersonsService>();
+        services.AddScoped<IDeliveryPersonsService, DeliveryPersonsService>();
         return services;
     }
 }

@@ -5,10 +5,7 @@ namespace Pizzeria.API.Modules.DeliveryPersons;
 
 public interface IDeliveryPersonsService
 {
-    IReadOnlyCollection<DeliveryPerson> FindAll();
-    DeliveryPerson? FindByCode(string code);
-    DeliveryPerson Create(CreateDeliveryPersonDto dto);
-    DeliveryPerson? FindAvailable();
-    DeliveryPerson MarkBusy(string code);
-    DeliveryPerson MarkAvailable(string code);
+    Task<IReadOnlyCollection<DeliveryPerson>> FindAllAsync(CancellationToken ct = default);
+    Task<DeliveryPerson?> FindByCodeAsync(string code, CancellationToken ct = default);
+    Task<DeliveryPerson> CreateAsync(CreateDeliveryPersonDto dto, CancellationToken ct = default);
 }

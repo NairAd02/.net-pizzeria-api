@@ -9,22 +9,22 @@ namespace Pizzeria.API.Modules.DeliveryPersons;
 public class DeliveryPersonsController(IDeliveryPersonsService deliveryPersonsService) : ControllerBase
 {
     [HttpGet]
-    public ActionResult<IEnumerable<DeliveryPerson>> FindAll() =>
-        Ok(deliveryPersonsService.FindAll());
+    public async Task<ActionResult<IEnumerable<DeliveryPerson>>> FindAll(CancellationToken ct) =>
+        Ok(await deliveryPersonsService.FindAllAsync(ct));
 
     [HttpGet("{code}")]
-    public ActionResult<DeliveryPerson> FindByCode(string code)
+    public async Task<ActionResult<DeliveryPerson>> FindByCode(string code, CancellationToken ct)
     {
-        var person = deliveryPersonsService.FindByCode(code);
+        var person = await deliveryPersonsService.FindByCodeAsync(code, ct);
         return person is null ? NotFound() : Ok(person);
     }
 
     [HttpPost]
-    public ActionResult<DeliveryPerson> Create([FromBody] CreateDeliveryPersonDto dto)
+    public async Task<ActionResult<DeliveryPerson>> Create([FromBody] CreateDeliveryPersonDto dto, CancellationToken ct)
     {
         try
         {
-            var created = deliveryPersonsService.Create(dto);
+            var created = await deliveryPersonsService.CreateAsync(dto, ct);
             return CreatedAtAction(nameof(FindByCode), new { code = created.Code }, created);
         }
         catch (InvalidOperationException ex)

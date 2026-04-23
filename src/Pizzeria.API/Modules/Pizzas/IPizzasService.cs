@@ -5,8 +5,8 @@ namespace Pizzeria.API.Modules.Pizzas;
 
 public interface IPizzasService
 {
-    IReadOnlyCollection<Pizza> FindAll();
-    Pizza? FindById(string id);
-    Pizza Create(CreatePizzaDto dto);
-    PizzaCostDto CalculateCost(string id);
+    Task<IReadOnlyCollection<Pizza>> FindAllAsync(CancellationToken ct = default);
+    Task<Pizza?> FindByIdAsync(string id, CancellationToken ct = default);
+    Task<Pizza> CreateAsync(CreatePizzaDto dto, CancellationToken ct = default);
+    Task<PizzaCostDto> CalculateCostAsync(string id, CancellationToken ct = default);
 }

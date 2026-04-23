@@ -1,33 +1,47 @@
-using System.Collections.Concurrent;
-using Pizzeria.API.Modules.Ingredients;
+using Microsoft.EntityFrameworkCore;
+using Pizzeria.API.Infrastructure.Database;
 using Pizzeria.API.Modules.Pizzas.Dtos;
 using Pizzeria.API.Modules.Pizzas.Entities;
 
 namespace Pizzeria.API.Modules.Pizzas;
 
-public class PizzasService(IIngredientsService ingredientsService) : IPizzasService
+public class PizzasService(PizzeriaDbContext context) : IPizzasService
 {
-    private readonly ConcurrentDictionary<string, Pizza> _store = new();
+    public async Task<IReadOnlyCollection<Pizza>> FindAllAsync(CancellationToken ct = default)
+    {
+        var pizzas = await context.Pizzas
+            .AsNoTracking()
+            .Include(p => p.Ingredients)
+            .OrderBy(p => p.Name)
+            .ToListAsync(ct);
+        return pizzas.AsReadOnly();
+    }
 
-    public IReadOnlyCollection<Pizza> FindAll() => _store.Values.ToList().AsReadOnly();
+    public Task<Pizza?> FindByIdAsync(string id, CancellationToken ct = default) =>
+        context.Pizzas
+            .AsNoTracking()
+            .Include(p => p.Ingredients)
+            .FirstOrDefaultAsync(p => p.Id == id, ct);
 
-    public Pizza? FindById(string id) =>
-        _store.TryGetValue(id, out var pizza) ? pizza : null;
-
-    public Pizza Create(CreatePizzaDto dto)
+    public async Task<Pizza> CreateAsync(CreatePizzaDto dto, CancellationToken ct = default)
     {
         if (dto.Ingredients is null || dto.Ingredients.Count == 0)
         {
             throw new ArgumentException("A pizza must declare at least one ingredient.");
         }
 
-        // Validamos que todos los ingredientes existan antes de persistir la pizza.
-        foreach (var item in dto.Ingredients)
+        // Validamos en una sola consulta que todos los ingredientes existan.
+        var codes = dto.Ingredients.Select(i => i.IngredientCode).Distinct().ToList();
+        var existingCodes = await context.Ingredients
+            .Where(i => codes.Contains(i.Code))
+            .Select(i => i.Code)
+            .ToListAsync(ct);
+
+        var missing = codes.Except(existingCodes).ToList();
+        if (missing.Count > 0)
         {
-            if (ingredientsService.FindByCode(item.IngredientCode) is null)
-            {
-                throw new KeyNotFoundException($"Ingredient '{item.IngredientCode}' not found.");
-            }
+            throw new KeyNotFoundException(
+                $"Ingredients not found: {string.Join(", ", missing)}.");
         }
 
         var pizza = new Pizza
@@ -44,23 +58,33 @@ public class PizzasService(IIngredientsService ingredientsService) : IPizzasServ
                 .ToList(),
         };
 
-        _store[pizza.Id] = pizza;
+        context.Pizzas.Add(pizza);
+        await context.SaveChangesAsync(ct);
         return pizza;
     }
 
-    public PizzaCostDto CalculateCost(string id)
+    public async Task<PizzaCostDto> CalculateCostAsync(string id, CancellationToken ct = default)
     {
-        var pizza = FindById(id)
+        var pizza = await context.Pizzas
+            .AsNoTracking()
+            .Include(p => p.Ingredients)
+            .FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new KeyNotFoundException($"Pizza '{id}' not found.");
+
+        var codes = pizza.Ingredients.Select(pi => pi.IngredientCode).ToList();
+        var prices = await context.Ingredients
+            .Where(i => codes.Contains(i.Code))
+            .ToDictionaryAsync(i => i.Code, i => i.PricePerUnit, ct);
 
         decimal ingredientsCost = 0m;
         foreach (var item in pizza.Ingredients)
         {
-            var ingredient = ingredientsService.FindByCode(item.IngredientCode)
-                ?? throw new InvalidOperationException(
+            if (!prices.TryGetValue(item.IngredientCode, out var pricePerUnit))
+            {
+                throw new InvalidOperationException(
                     $"Ingredient '{item.IngredientCode}' no longer exists.");
-
-            ingredientsCost += ingredient.PricePerUnit * item.Quantity;
+            }
+            ingredientsCost += pricePerUnit * item.Quantity;
         }
 
         return new PizzaCostDto(

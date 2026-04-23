@@ -9,22 +9,22 @@ namespace Pizzeria.API.Modules.Ingredients;
 public class IngredientsController(IIngredientsService ingredientsService) : ControllerBase
 {
     [HttpGet]
-    public ActionResult<IEnumerable<Ingredient>> FindAll() =>
-        Ok(ingredientsService.FindAll());
+    public async Task<ActionResult<IEnumerable<Ingredient>>> FindAll(CancellationToken ct) =>
+        Ok(await ingredientsService.FindAllAsync(ct));
 
     [HttpGet("{code}")]
-    public ActionResult<Ingredient> FindByCode(string code)
+    public async Task<ActionResult<Ingredient>> FindByCode(string code, CancellationToken ct)
     {
-        var ingredient = ingredientsService.FindByCode(code);
+        var ingredient = await ingredientsService.FindByCodeAsync(code, ct);
         return ingredient is null ? NotFound() : Ok(ingredient);
     }
 
     [HttpPost]
-    public ActionResult<Ingredient> Create([FromBody] CreateIngredientDto dto)
+    public async Task<ActionResult<Ingredient>> Create([FromBody] CreateIngredientDto dto, CancellationToken ct)
     {
         try
         {
-            var created = ingredientsService.Create(dto);
+            var created = await ingredientsService.CreateAsync(dto, ct);
             return CreatedAtAction(nameof(FindByCode), new { code = created.Code }, created);
         }
         catch (InvalidOperationException ex)
@@ -34,11 +34,11 @@ public class IngredientsController(IIngredientsService ingredientsService) : Con
     }
 
     [HttpPatch("{code}/stock")]
-    public ActionResult<Ingredient> AddStock(string code, [FromBody] UpdateStockDto dto)
+    public async Task<ActionResult<Ingredient>> AddStock(string code, [FromBody] UpdateStockDto dto, CancellationToken ct)
     {
         try
         {
-            return Ok(ingredientsService.AddStock(code, dto.Quantity));
+            return Ok(await ingredientsService.AddStockAsync(code, dto.Quantity, ct));
         }
         catch (KeyNotFoundException ex)
         {

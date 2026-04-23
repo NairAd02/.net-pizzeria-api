@@ -1,122 +1,198 @@
-using System.Collections.Concurrent;
-using Pizzeria.API.Modules.DeliveryPersons;
-using Pizzeria.API.Modules.Ingredients;
+using Microsoft.EntityFrameworkCore;
+using Pizzeria.API.Infrastructure.Database;
+using Pizzeria.API.Modules.DeliveryPersons.Entities;
 using Pizzeria.API.Modules.Orders.Dtos;
 using Pizzeria.API.Modules.Orders.Entities;
-using Pizzeria.API.Modules.Pizzas;
 
 namespace Pizzeria.API.Modules.Orders;
 
-public class OrdersService(
-    IPizzasService pizzasService,
-    IIngredientsService ingredientsService,
-    IDeliveryPersonsService deliveryPersonsService) : IOrdersService
+public class OrdersService(PizzeriaDbContext context) : IOrdersService
 {
-    private readonly ConcurrentDictionary<string, Order> _store = new();
+    public async Task<IReadOnlyCollection<Order>> FindAllAsync(CancellationToken ct = default)
+    {
+        var orders = await context.Orders
+            .AsNoTracking()
+            .Include(o => o.Items)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync(ct);
+        return orders.AsReadOnly();
+    }
 
-    public IReadOnlyCollection<Order> FindAll() => _store.Values.ToList().AsReadOnly();
+    public Task<Order?> FindByIdAsync(string id, CancellationToken ct = default) =>
+        context.Orders
+            .AsNoTracking()
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == id, ct);
 
-    public Order? FindById(string id) =>
-        _store.TryGetValue(id, out var order) ? order : null;
-
-    public Order Create(CreateOrderDto dto)
+    public async Task<Order> CreateAsync(CreateOrderDto dto, CancellationToken ct = default)
     {
         if (dto.Items is null || dto.Items.Count == 0)
         {
             throw new ArgumentException("Order must contain at least one pizza.");
         }
 
-        // 1. Agregamos las cantidades requeridas de cada ingrediente sumando todas las pizzas del pedido.
-        var required = new Dictionary<string, decimal>();
         foreach (var item in dto.Items)
         {
             if (item.Quantity <= 0)
             {
                 throw new ArgumentException($"Quantity for pizza '{item.PizzaId}' must be positive.");
             }
+        }
 
-            var pizza = pizzasService.FindById(item.PizzaId)
-                ?? throw new KeyNotFoundException($"Pizza '{item.PizzaId}' not found.");
+        // Toda la operación (verificar stock + descontar + insertar pedido) debe ser
+        // atómica: usamos una transacción explícita para que si algo falla, nada persista.
+        await using var transaction = await context.Database.BeginTransactionAsync(ct);
 
-            foreach (var ingredient in pizza.Ingredients)
+        try
+        {
+            // 1. Cargamos las pizzas involucradas (con sus ingredientes) en una sola consulta.
+            var pizzaIds = dto.Items.Select(i => i.PizzaId).Distinct().ToList();
+            var pizzas = await context.Pizzas
+                .Include(p => p.Ingredients)
+                .Where(p => pizzaIds.Contains(p.Id))
+                .ToListAsync(ct);
+
+            var missingPizzas = pizzaIds.Except(pizzas.Select(p => p.Id)).ToList();
+            if (missingPizzas.Count > 0)
             {
-                var totalNeeded = ingredient.Quantity * item.Quantity;
-                required[ingredient.IngredientCode] =
-                    required.GetValueOrDefault(ingredient.IngredientCode) + totalNeeded;
+                throw new KeyNotFoundException(
+                    $"Pizzas not found: {string.Join(", ", missingPizzas)}.");
             }
-        }
 
-        // 2. Verificamos stock de TODOS los ingredientes antes de tocar nada.
-        foreach (var (code, quantity) in required)
-        {
-            if (!ingredientsService.HasStock(code, quantity))
+            var pizzaById = pizzas.ToDictionary(p => p.Id);
+
+            // 2. Agregamos los ingredientes requeridos (cantidad por pizza × número de pizzas del pedido).
+            var required = new Dictionary<string, decimal>();
+            foreach (var item in dto.Items)
             {
-                throw new InvalidOperationException(
-                    $"Not enough stock for ingredient '{code}'. Required: {quantity}.");
+                var pizza = pizzaById[item.PizzaId];
+                foreach (var pi in pizza.Ingredients)
+                {
+                    var totalNeeded = pi.Quantity * item.Quantity;
+                    required[pi.IngredientCode] =
+                        required.GetValueOrDefault(pi.IngredientCode) + totalNeeded;
+                }
             }
+
+            // 3. Cargamos los ingredientes necesarios ya trackeados para poder modificar su stock.
+            var neededCodes = required.Keys.ToList();
+            var ingredients = await context.Ingredients
+                .Where(i => neededCodes.Contains(i.Code))
+                .ToListAsync(ct);
+
+            var ingredientByCode = ingredients.ToDictionary(i => i.Code);
+
+            // 4. Validamos que haya stock suficiente de TODOS los ingredientes antes de descontar ninguno.
+            foreach (var (code, quantity) in required)
+            {
+                if (!ingredientByCode.TryGetValue(code, out var ingredient))
+                {
+                    throw new InvalidOperationException(
+                        $"Ingredient '{code}' not found in stock.");
+                }
+
+                if (ingredient.Stock < quantity)
+                {
+                    throw new InvalidOperationException(
+                        $"Not enough stock for ingredient '{code}'. " +
+                        $"Available: {ingredient.Stock}, required: {quantity}.");
+                }
+            }
+
+            // 5. Descontamos el stock (los objetos están trackeados, EF detecta los cambios).
+            foreach (var (code, quantity) in required)
+            {
+                ingredientByCode[code].Stock -= quantity;
+            }
+
+            // 6. Creamos el pedido.
+            var order = new Order
+            {
+                Id = Guid.NewGuid().ToString(),
+                CustomerName = dto.CustomerName,
+                CustomerPhone = dto.CustomerPhone,
+                Items = dto.Items
+                    .Select(i => new OrderItem { PizzaId = i.PizzaId, Quantity = i.Quantity })
+                    .ToList(),
+            };
+
+            context.Orders.Add(order);
+
+            // 7. Guardamos todo en una sola llamada y commiteamos.
+            await context.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return order;
         }
-
-        // 3. Solo si todo pasa, descontamos el stock.
-        foreach (var (code, quantity) in required)
+        catch
         {
-            ingredientsService.DecrementStock(code, quantity);
+            await transaction.RollbackAsync(ct);
+            throw;
         }
-
-        var order = new Order
-        {
-            Id = Guid.NewGuid().ToString(),
-            CustomerName = dto.CustomerName,
-            CustomerPhone = dto.CustomerPhone,
-            Items = dto.Items
-                .Select(i => new OrderItem { PizzaId = i.PizzaId, Quantity = i.Quantity })
-                .ToList(),
-        };
-
-        _store[order.Id] = order;
-        return order;
     }
 
-    public Order UpdateStatus(string id, OrderStatus newStatus)
+    public async Task<Order> UpdateStatusAsync(string id, OrderStatus newStatus, CancellationToken ct = default)
     {
-        var order = FindById(id)
-            ?? throw new KeyNotFoundException($"Order '{id}' not found.");
+        await using var transaction = await context.Database.BeginTransactionAsync(ct);
 
-        switch (newStatus)
+        try
         {
-            case OrderStatus.OnTheWay:
-                AssignAvailableDeliveryPerson(order);
-                break;
+            var order = await context.Orders
+                .Include(o => o.Items)
+                .FirstOrDefaultAsync(o => o.Id == id, ct)
+                ?? throw new KeyNotFoundException($"Order '{id}' not found.");
 
-            case OrderStatus.Delivered:
-                ReleaseDeliveryPerson(order);
-                break;
+            switch (newStatus)
+            {
+                case OrderStatus.OnTheWay:
+                    await AssignAvailableDeliveryPersonAsync(order, ct);
+                    break;
+
+                case OrderStatus.Delivered:
+                    await ReleaseDeliveryPersonAsync(order, ct);
+                    break;
+            }
+
+            order.Status = newStatus;
+
+            await context.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return order;
         }
-
-        order.Status = newStatus;
-        return order;
+        catch
+        {
+            await transaction.RollbackAsync(ct);
+            throw;
+        }
     }
 
-    private void AssignAvailableDeliveryPerson(Order order)
+    private async Task AssignAvailableDeliveryPersonAsync(Order order, CancellationToken ct)
     {
         if (!string.IsNullOrEmpty(order.AssignedDeliveryPersonCode))
         {
-            return; // Ya tiene uno asignado, no lo duplicamos.
+            return; // Ya tiene uno asignado; no lo duplicamos.
         }
 
-        var available = deliveryPersonsService.FindAvailable()
+        var available = await context.DeliveryPersons
+            .FirstOrDefaultAsync(p => p.Status == DeliveryPersonStatus.Available, ct)
             ?? throw new InvalidOperationException("No delivery persons available right now.");
 
-        deliveryPersonsService.MarkBusy(available.Code);
+        available.Status = DeliveryPersonStatus.Busy;
         order.AssignedDeliveryPersonCode = available.Code;
     }
 
-    private void ReleaseDeliveryPerson(Order order)
+    private async Task ReleaseDeliveryPersonAsync(Order order, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(order.AssignedDeliveryPersonCode))
         {
             return;
         }
 
-        deliveryPersonsService.MarkAvailable(order.AssignedDeliveryPersonCode);
+        var person = await context.DeliveryPersons
+            .FirstOrDefaultAsync(p => p.Code == order.AssignedDeliveryPersonCode, ct);
+
+        if (person is not null)
+        {
+            person.Status = DeliveryPersonStatus.Available;
+        }
     }
 }

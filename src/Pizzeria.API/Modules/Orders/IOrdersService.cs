@@ -5,8 +5,8 @@ namespace Pizzeria.API.Modules.Orders;
 
 public interface IOrdersService
 {
-    IReadOnlyCollection<Order> FindAll();
-    Order? FindById(string id);
-    Order Create(CreateOrderDto dto);
-    Order UpdateStatus(string id, OrderStatus newStatus);
+    Task<IReadOnlyCollection<Order>> FindAllAsync(CancellationToken ct = default);
+    Task<Order?> FindByIdAsync(string id, CancellationToken ct = default);
+    Task<Order> CreateAsync(CreateOrderDto dto, CancellationToken ct = default);
+    Task<Order> UpdateStatusAsync(string id, OrderStatus newStatus, CancellationToken ct = default);
 }

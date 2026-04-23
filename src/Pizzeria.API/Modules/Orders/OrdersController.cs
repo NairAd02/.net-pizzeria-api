@@ -9,22 +9,22 @@ namespace Pizzeria.API.Modules.Orders;
 public class OrdersController(IOrdersService ordersService) : ControllerBase
 {
     [HttpGet]
-    public ActionResult<IEnumerable<Order>> FindAll() =>
-        Ok(ordersService.FindAll());
+    public async Task<ActionResult<IEnumerable<Order>>> FindAll(CancellationToken ct) =>
+        Ok(await ordersService.FindAllAsync(ct));
 
     [HttpGet("{id}")]
-    public ActionResult<Order> FindById(string id)
+    public async Task<ActionResult<Order>> FindById(string id, CancellationToken ct)
     {
-        var order = ordersService.FindById(id);
+        var order = await ordersService.FindByIdAsync(id, ct);
         return order is null ? NotFound() : Ok(order);
     }
 
     [HttpPost]
-    public ActionResult<Order> Create([FromBody] CreateOrderDto dto)
+    public async Task<ActionResult<Order>> Create([FromBody] CreateOrderDto dto, CancellationToken ct)
     {
         try
         {
-            var order = ordersService.Create(dto);
+            var order = await ordersService.CreateAsync(dto, ct);
             return CreatedAtAction(nameof(FindById), new { id = order.Id }, order);
         }
         catch (KeyNotFoundException ex)
@@ -42,11 +42,11 @@ public class OrdersController(IOrdersService ordersService) : ControllerBase
     }
 
     [HttpPatch("{id}/status")]
-    public ActionResult<Order> UpdateStatus(string id, [FromBody] UpdateOrderStatusDto dto)
+    public async Task<ActionResult<Order>> UpdateStatus(string id, [FromBody] UpdateOrderStatusDto dto, CancellationToken ct)
     {
         try
         {
-            return Ok(ordersService.UpdateStatus(id, dto.Status));
+            return Ok(await ordersService.UpdateStatusAsync(id, dto.Status, ct));
         }
         catch (KeyNotFoundException ex)
         {

@@ -8,7 +8,7 @@ public static class OrdersModule
 {
     public static IServiceCollection AddOrdersModule(this IServiceCollection services)
     {
-        services.AddSingleton<IOrdersService, OrdersService>();
+        services.AddScoped<IOrdersService, OrdersService>();
         return services;
     }
 }

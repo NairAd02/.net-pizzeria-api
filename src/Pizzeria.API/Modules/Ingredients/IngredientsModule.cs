@@ -8,7 +8,8 @@ public static class IngredientsModule
 {
     public static IServiceCollection AddIngredientsModule(this IServiceCollection services)
     {
-        services.AddSingleton<IIngredientsService, IngredientsService>();
+        // Scoped porque depende de PizzeriaDbContext, que es scoped por request.
+        services.AddScoped<IIngredientsService, IngredientsService>();
         return services;
     }
 }

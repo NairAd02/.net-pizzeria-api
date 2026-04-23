@@ -1,20 +1,35 @@
-using System.Collections.Concurrent;
+using Microsoft.EntityFrameworkCore;
+using Pizzeria.API.Infrastructure.Database;
 using Pizzeria.API.Modules.DeliveryPersons.Dtos;
 using Pizzeria.API.Modules.DeliveryPersons.Entities;
 
 namespace Pizzeria.API.Modules.DeliveryPersons;
 
-public class DeliveryPersonsService : IDeliveryPersonsService
+public class DeliveryPersonsService(PizzeriaDbContext context) : IDeliveryPersonsService
 {
-    private readonly ConcurrentDictionary<string, DeliveryPerson> _store = new();
-
-    public IReadOnlyCollection<DeliveryPerson> FindAll() => _store.Values.ToList().AsReadOnly();
-
-    public DeliveryPerson? FindByCode(string code) =>
-        _store.TryGetValue(code, out var person) ? person : null;
-
-    public DeliveryPerson Create(CreateDeliveryPersonDto dto)
+    public async Task<IReadOnlyCollection<DeliveryPerson>> FindAllAsync(CancellationToken ct = default)
     {
+        var people = await context.DeliveryPersons
+            .AsNoTracking()
+            .OrderBy(p => p.Code)
+            .ToListAsync(ct);
+        return people.AsReadOnly();
+    }
+
+    public Task<DeliveryPerson?> FindByCodeAsync(string code, CancellationToken ct = default) =>
+        context.DeliveryPersons
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Code == code, ct);
+
+    public async Task<DeliveryPerson> CreateAsync(CreateDeliveryPersonDto dto, CancellationToken ct = default)
+    {
+        var exists = await context.DeliveryPersons.AnyAsync(p => p.Code == dto.Code, ct);
+        if (exists)
+        {
+            throw new InvalidOperationException(
+                $"Delivery person with code '{dto.Code}' already exists.");
+        }
+
         var person = new DeliveryPerson
         {
             Code = dto.Code,
@@ -22,33 +37,8 @@ public class DeliveryPersonsService : IDeliveryPersonsService
             Phone = dto.Phone,
         };
 
-        if (!_store.TryAdd(dto.Code, person))
-        {
-            throw new InvalidOperationException(
-                $"Delivery person with code '{dto.Code}' already exists.");
-        }
-
-        return person;
-    }
-
-    public DeliveryPerson? FindAvailable() =>
-        _store.Values.FirstOrDefault(p => p.Status == DeliveryPersonStatus.Available);
-
-    public DeliveryPerson MarkBusy(string code)
-    {
-        var person = FindByCode(code)
-            ?? throw new KeyNotFoundException($"Delivery person '{code}' not found.");
-
-        person.Status = DeliveryPersonStatus.Busy;
-        return person;
-    }
-
-    public DeliveryPerson MarkAvailable(string code)
-    {
-        var person = FindByCode(code)
-            ?? throw new KeyNotFoundException($"Delivery person '{code}' not found.");
-
-        person.Status = DeliveryPersonStatus.Available;
+        context.DeliveryPersons.Add(person);
+        await context.SaveChangesAsync(ct);
         return person;
     }
 }
