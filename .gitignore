@@ -1,0 +1,124 @@
+## =====================================================
+##  .NET / ASP.NET Core build artifacts
+## =====================================================
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+[Dd]ebugPublic/
+[Ll]og/
+[Ll]ogs/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+build/
+artifacts/
+publish/
+
+# Build results
+*.dll
+*.exe
+*.pdb
+*.cache
+*.log
+*.tlog
+*.binlog
+
+## =====================================================
+##  NuGet
+## =====================================================
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+.nuget/
+
+## =====================================================
+##  User-specific files
+## =====================================================
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+## =====================================================
+##  Visual Studio
+## =====================================================
+.vs/
+*.vspscc
+*.vssscc
+*.vsp
+*.vspx
+*.VC.db
+*.VC.VC.opendb
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+## =====================================================
+##  Rider / JetBrains
+## =====================================================
+.idea/
+*.sln.iml
+*.DotSettings.user
+
+## =====================================================
+##  VS Code
+## =====================================================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+## =====================================================
+##  Test results / coverage
+## =====================================================
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+.coverage
+.coverage.*
+TestResults/
+
+## =====================================================
+##  ASP.NET Core secrets / environment
+## =====================================================
+*.pfx
+*.snk
+secrets.json
+appsettings.*.Local.json
+appsettings.Local.json
+.env
+.env.*
+!.env.example
+
+## =====================================================
+##  OS
+## =====================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+.Trash-*
