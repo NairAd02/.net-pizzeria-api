@@ -30,9 +30,16 @@ pizzas, pedidos y repartidores.
 src/Pizzeria.API/
 ├── Program.cs                          # "AppModule": carga .env y registra módulos
 ├── Infrastructure/
-│   └── Database/
-│       ├── PizzeriaDbContext.cs        # DbSets + OnModelCreating (relaciones)
-│       └── DatabaseModule.cs           # AddDbContext con Npgsql + lectura de .env
+│   ├── Database/
+│   │   ├── PizzeriaDbContext.cs        # DbSets + OnModelCreating (relaciones)
+│   │   └── DatabaseModule.cs           # AddDbContext con Npgsql + lectura de .env
+│   └── Storage/
+│       ├── ProductImage.cs             # tipo tipado que se guarda dentro de la columna jsonb
+│       ├── IStorageService.cs          # contrato provider-agnostic
+│       ├── S3StorageService.cs         # implementación sobre AWSSDK.S3 (funciona con cualquier S3-compatible)
+│       ├── StorageOptions.cs           # POCO poblado desde STORAGE_* del .env
+│       ├── ImageFileValidator.cs       # validación compartida (tamaño, content-type)
+│       └── StorageModule.cs            # AddStorageModule: registra IAmazonS3 + IStorageService
 ├── Modules/
 │   ├── Ingredients/
 │   │   ├── IngredientsModule.cs        # registra IIngredientsService en DI
@@ -59,16 +66,20 @@ Implementación del service → Controller → Module** (registro en DI).
 ## Endpoints principales
 
 ### Ingredients — `/api/ingredients`
-- `GET /`            lista todos
-- `GET /{code}`      obtiene uno
-- `POST /`           crea
-- `PATCH /{code}/stock`   suma stock
+- `GET /`                         lista todos
+- `GET /{code}`                   obtiene uno
+- `POST /`                        crea
+- `PATCH /{code}/stock`           suma stock
+- `POST /{code}/images`           sube una imagen (multipart: `file`, opcional `altText`)
+- `DELETE /{code}/images/{key}`   elimina una imagen del storage y del JSON
 
 ### Pizzas — `/api/pizzas`
-- `GET /`            lista
-- `GET /{id}`        obtiene una
-- `POST /`           crea (valida que los ingredientes existan)
-- `GET /{id}/cost`   calcula costo = `basePrice + Σ(pricePerUnit × qty)`
+- `GET /`                       lista
+- `GET /{id}`                   obtiene una
+- `POST /`                      crea (valida que los ingredientes existan)
+- `GET /{id}/cost`              calcula costo = `basePrice + Σ(pricePerUnit × qty)`
+- `POST /{id}/images`           sube una imagen (multipart: `file`, opcional `altText`)
+- `DELETE /{id}/images/{key}`   elimina una imagen del storage y del JSON
 
 ### Delivery persons — `/api/delivery-persons`
 - `GET /`, `GET /{code}`, `POST /`
@@ -115,6 +126,12 @@ Postgres antes de aplicar migraciones. Puedes crearla con:
 psql -U postgres -c "CREATE DATABASE pizzeria;"
 ```
 
+En el mismo `.env` añade el bloque `STORAGE_*`. El proyecto ya trae el módulo
+`Infrastructure/Storage` listo para hablar con cualquier proveedor S3-compatible;
+cambiar de Supabase a AWS S3, Cloudflare R2 o MinIO es **solo editar el `.env`**
+(cero cambios en C#). Ver la sección [Storage de imágenes](#storage-de-imágenes)
+más abajo para el detalle de cada variable.
+
 ### 3. Migraciones
 
 Desde la raíz del repo:
@@ -146,6 +163,80 @@ La API queda en `http://localhost:5202`. El OpenAPI JSON vive en
 Para probar rápido, abre `src/Pizzeria.API/Pizzeria.API.http` en VS Code / Rider
 y ejecuta los requests en orden (Ingredients → Pizzas → Delivery persons →
 Orders).
+
+## Storage de imágenes
+
+Las entidades `Pizza` e `Ingredient` tienen una columna `images` de tipo `jsonb`
+que guarda una lista de objetos `ProductImage` (definido en
+`Infrastructure/Storage/ProductImage.cs`). Cada objeto lleva:
+
+```json
+{
+  "key": "pizzas/<id>/<guid>.jpg",
+  "url": "https://.../<bucket>/pizzas/<id>/<guid>.jpg",
+  "contentType": "image/jpeg",
+  "size": 184213,
+  "width": null,
+  "height": null,
+  "altText": "Vista superior de la Margherita",
+  "createdAt": "2025-10-20T18:32:11.123Z"
+}
+```
+
+### Arquitectura
+
+- `IStorageService` (contrato agnóstico): `UploadAsync`, `DeleteAsync`, `BuildPublicUrl`.
+- `S3StorageService` (implementación única): usa `AWSSDK.S3` con `ServiceURL` +
+  `ForcePathStyle`, por lo que sirve para **cualquier** backend S3-compatible:
+  Supabase, AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, etc.
+- `StorageModule.AddStorageModule()` registra el cliente S3 como singleton y
+  lee las `STORAGE_*` del `.env`.
+
+Los módulos de dominio (`Pizzas`, `Ingredients`) solo dependen de la interfaz,
+nunca del SDK.
+
+### Configuración
+
+Bloque `STORAGE_*` en `.env` (ver `.env.example` para las plantillas completas
+de Supabase, AWS, R2 y MinIO):
+
+| Variable | Requerida | Descripción |
+|---|---|---|
+| `STORAGE_PROVIDER` | no | Etiqueta informativa (`supabase`, `aws`, `r2`, `minio`). |
+| `STORAGE_ENDPOINT` | **sí** | URL del servicio S3. Ej. `https://<ref>.supabase.co/storage/v1/s3`. |
+| `STORAGE_REGION` | no | Default `us-east-1`. En R2 usa `auto`. |
+| `STORAGE_ACCESS_KEY_ID` | **sí** | Credencial S3. |
+| `STORAGE_SECRET_ACCESS_KEY` | **sí** | Credencial S3. |
+| `STORAGE_BUCKET` | **sí** | Nombre del bucket (debe existir, configurado como público). |
+| `STORAGE_PUBLIC_BASE_URL` | no | URL base para construir las URLs finales. Si no se define se usa `{endpoint}/{bucket}`. |
+| `STORAGE_FORCE_PATH_STYLE` | no | Default `true`. Solo se pone `false` para AWS S3 con virtual-host. |
+| `STORAGE_MAX_FILE_SIZE_MB` | no | Default `5`. Valida el tamaño por archivo. |
+| `STORAGE_ALLOWED_CONTENT_TYPES` | no | Default `image/jpeg,image/png,image/webp,image/avif`. |
+
+Para **Supabase** concretamente:
+
+1. En el dashboard de Supabase crea un bucket (p. ej. `pizzeria-images`) y
+   márcalo como **Public**.
+2. En _Project Settings → Storage_ obtén las credenciales **S3 access keys** y
+   el **S3 connection URL** (el endpoint).
+3. Pon los valores en `.env` usando el bloque de ejemplo.
+
+Para **cambiar a otro proveedor**: solo reemplaza el bloque `STORAGE_*` con
+el de la plantilla correspondiente en `.env.example`. No se toca ni una línea
+de C#.
+
+### Endpoints
+
+```
+POST   /api/pizzas/{id}/images          multipart: file, altText?
+DELETE /api/pizzas/{id}/images/{key}    key = "pizzas/{id}/{guid}.ext"
+
+POST   /api/ingredients/{code}/images          multipart: file, altText?
+DELETE /api/ingredients/{code}/images/{key}    key = "ingredients/{code}/{guid}.ext"
+```
+
+Los `GET` de pizzas/ingredients ya devuelven la columna `images` poblada
+automáticamente.
 
 ## Detalles de EF Core que conviene tener presentes
 
