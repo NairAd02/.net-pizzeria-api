@@ -51,16 +51,18 @@ public class PizzasController(IPizzasService pizzasService) : ControllerBase
     }
 
     [HttpPost("{id}/images")]
-    [RequestSizeLimit(25_000_000)] // tope duro a nivel transporte; el tamaño útil se valida en el service
-    public async Task<ActionResult<Pizza>> AddImage(
+    [RequestSizeLimit(50_000_000)] // tope duro del request (varios archivos); el tamaño por archivo se valida en el service
+    public async Task<ActionResult<Pizza>> AddImages(
         string id,
-        [FromForm] IFormFile file,
-        [FromForm] string? altText,
+        // Multipart: repetir el campo 'files' por cada imagen. 'altTexts' es opcional
+        // y se empareja por índice (files[i] ↔ altTexts[i]); si falta, queda sin alt.
+        [FromForm(Name = "files")] List<IFormFile> files,
+        [FromForm(Name = "altTexts")] List<string?>? altTexts,
         CancellationToken ct)
     {
         try
         {
-            return Ok(await pizzasService.AddImageAsync(id, file, altText, ct));
+            return Ok(await pizzasService.AddImagesAsync(id, files, altTexts, ct));
         }
         catch (KeyNotFoundException ex)
         {

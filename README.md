@@ -70,7 +70,7 @@ Implementación del service → Controller → Module** (registro en DI).
 - `GET /{code}`                   obtiene uno
 - `POST /`                        crea
 - `PATCH /{code}/stock`           suma stock
-- `POST /{code}/images`           sube una imagen (multipart: `file`, opcional `altText`)
+- `POST /{code}/images`           sube **una o varias** imágenes (multipart: `files` repetido, opcional `altTexts` por índice)
 - `DELETE /{code}/images/{key}`   elimina una imagen del storage y del JSON
 
 ### Pizzas — `/api/pizzas`
@@ -78,7 +78,7 @@ Implementación del service → Controller → Module** (registro en DI).
 - `GET /{id}`                   obtiene una
 - `POST /`                      crea (valida que los ingredientes existan)
 - `GET /{id}/cost`              calcula costo = `basePrice + Σ(pricePerUnit × qty)`
-- `POST /{id}/images`           sube una imagen (multipart: `file`, opcional `altText`)
+- `POST /{id}/images`           sube **una o varias** imágenes (multipart: `files` repetido, opcional `altTexts` por índice)
 - `DELETE /{id}/images/{key}`   elimina una imagen del storage y del JSON
 
 ### Delivery persons — `/api/delivery-persons`
@@ -228,12 +228,23 @@ de C#.
 ### Endpoints
 
 ```
-POST   /api/pizzas/{id}/images          multipart: file, altText?
+POST   /api/pizzas/{id}/images          multipart: files[*], altTexts[*]?
 DELETE /api/pizzas/{id}/images/{key}    key = "pizzas/{id}/{guid}.ext"
 
-POST   /api/ingredients/{code}/images          multipart: file, altText?
+POST   /api/ingredients/{code}/images          multipart: files[*], altTexts[*]?
 DELETE /api/ingredients/{code}/images/{key}    key = "ingredients/{code}/{guid}.ext"
 ```
+
+El `POST` de imágenes acepta una **o varias** imágenes en la misma llamada:
+
+- Repite el campo `files` por cada imagen que quieras subir.
+- Opcionalmente repite el campo `altTexts`; el i-ésimo `altText` se empareja
+  con el i-ésimo `file`. Si mandas menos `altTexts` que `files`, los que falten
+  quedan sin alt.
+- Si **cualquier** archivo falla validación (tamaño, content-type), se rechaza
+  toda la request sin subir nada.
+- Si un upload al storage falla a mitad de camino, los archivos que ya se
+  habían subido se borran del storage (best-effort) antes de propagar el error.
 
 Los `GET` de pizzas/ingredients ya devuelven la columna `images` poblada
 automáticamente.

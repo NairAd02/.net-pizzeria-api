@@ -51,16 +51,18 @@ public class IngredientsController(IIngredientsService ingredientsService) : Con
     }
 
     [HttpPost("{code}/images")]
-    [RequestSizeLimit(25_000_000)] // tope duro a nivel transporte; el tamaño útil se valida en el service
-    public async Task<ActionResult<Ingredient>> AddImage(
+    [RequestSizeLimit(50_000_000)] // tope duro del request (varios archivos); el tamaño por archivo se valida en el service
+    public async Task<ActionResult<Ingredient>> AddImages(
         string code,
-        [FromForm] IFormFile file,
-        [FromForm] string? altText,
+        // Multipart: repetir el campo 'files' por cada imagen. 'altTexts' es opcional
+        // y se empareja por índice (files[i] ↔ altTexts[i]); si falta, queda sin alt.
+        [FromForm(Name = "files")] List<IFormFile> files,
+        [FromForm(Name = "altTexts")] List<string?>? altTexts,
         CancellationToken ct)
     {
         try
         {
-            return Ok(await ingredientsService.AddImageAsync(code, file, altText, ct));
+            return Ok(await ingredientsService.AddImagesAsync(code, files, altTexts, ct));
         }
         catch (KeyNotFoundException ex)
         {

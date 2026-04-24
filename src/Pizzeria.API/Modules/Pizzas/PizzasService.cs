@@ -99,27 +99,65 @@ public class PizzasService(
             pizza.BasePrice + ingredientsCost);
     }
 
-    public async Task<Pizza> AddImageAsync(string id, IFormFile file, string? altText, CancellationToken ct = default)
+    public async Task<Pizza> AddImagesAsync(
+        string id,
+        IReadOnlyList<IFormFile> files,
+        IReadOnlyList<string?>? altTexts,
+        CancellationToken ct = default)
     {
-        ImageFileValidator.EnsureValid(file, storageOptions);
+        if (files is null || files.Count == 0)
+        {
+            throw new ArgumentException("At least one file must be provided.", nameof(files));
+        }
+
+        // Validamos todos los archivos ANTES de empezar a subir, así fallamos rápido
+        // sin dejar nada a medias en el storage.
+        foreach (var file in files)
+        {
+            ImageFileValidator.EnsureValid(file, storageOptions);
+        }
 
         var pizza = await context.Pizzas
             .Include(p => p.Ingredients)
             .FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new KeyNotFoundException($"Pizza '{id}' not found.");
 
-        await using var stream = file.OpenReadStream();
-        var image = await storage.UploadAsync(
-            content: stream,
-            objectKeyPrefix: $"pizzas/{id}",
-            originalFileName: file.FileName,
-            contentType: file.ContentType,
-            size: file.Length,
-            altText: altText,
-            ct: ct);
+        var uploaded = new List<ProductImage>(files.Count);
+        try
+        {
+            for (var i = 0; i < files.Count; i++)
+            {
+                var file = files[i];
+                var altText = altTexts is not null && i < altTexts.Count && !string.IsNullOrWhiteSpace(altTexts[i])
+                    ? altTexts[i]
+                    : null;
 
-        // Reemplazamos la lista (en vez de .Add) para que el ValueComparer detecte el cambio sin dudas.
-        pizza.Images = [.. pizza.Images, image];
+                await using var stream = file.OpenReadStream();
+                var image = await storage.UploadAsync(
+                    content: stream,
+                    objectKeyPrefix: $"pizzas/{id}",
+                    originalFileName: file.FileName,
+                    contentType: file.ContentType,
+                    size: file.Length,
+                    altText: altText,
+                    ct: ct);
+                uploaded.Add(image);
+            }
+        }
+        catch
+        {
+            // Si falla a mitad, borramos del storage lo ya subido para no dejar archivos huérfanos.
+            // Best-effort: ignoramos errores del delete para no enmascarar la excepción original.
+            foreach (var orphan in uploaded)
+            {
+                try { await storage.DeleteAsync(orphan.Key, CancellationToken.None); }
+                catch { /* best effort */ }
+            }
+            throw;
+        }
+
+        // Reemplazamos la lista (en vez de .AddRange) para que el ValueComparer detecte el cambio sin dudas.
+        pizza.Images = [.. pizza.Images, .. uploaded];
         await context.SaveChangesAsync(ct);
         return pizza;
     }

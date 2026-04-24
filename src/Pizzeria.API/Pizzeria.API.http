@@ -68,22 +68,33 @@ Content-Type: application/json
   "quantity": 5
 }
 
-### Subir imagen al ingrediente (multipart; ajusta la ruta del archivo)
+### Subir varias imágenes al ingrediente en una sola request
+### Repetir el campo 'files' por cada imagen. 'altTexts' es opcional; se empareja
+### por índice (i-ésimo altText ↔ i-ésimo file). Ajusta las rutas de ./samples/*.
 POST {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO/images
 Content-Type: multipart/form-data; boundary=----PizzeriaBoundary
 
 ------PizzeriaBoundary
-Content-Disposition: form-data; name="altText"
+Content-Disposition: form-data; name="altTexts"
 
 Queso rallado sobre tabla
 ------PizzeriaBoundary
-Content-Disposition: form-data; name="file"; filename="queso.jpg"
+Content-Disposition: form-data; name="altTexts"
+
+Bloque de mozzarella entero
+------PizzeriaBoundary
+Content-Disposition: form-data; name="files"; filename="queso-rallado.jpg"
 Content-Type: image/jpeg
 
-< ./samples/queso.jpg
+< ./samples/queso-rallado.jpg
+------PizzeriaBoundary
+Content-Disposition: form-data; name="files"; filename="queso-bloque.jpg"
+Content-Type: image/jpeg
+
+< ./samples/queso-bloque.jpg
 ------PizzeriaBoundary--
 
-### Borrar imagen del ingrediente (reemplaza {key} por el key devuelto al subirla)
+### Borrar imagen del ingrediente (reemplaza {guid}.ext por el key devuelto al subirla)
 DELETE {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO/images/ingredients/ING-QUESO/{guid}.jpg
 
 
@@ -114,19 +125,29 @@ Accept: application/json
 GET {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/cost
 Accept: application/json
 
-### Subir imagen a una pizza (multipart; ajusta la ruta del archivo)
+### Subir varias imágenes a una pizza en una sola request
+### Repetir 'files' por cada imagen; 'altTexts' opcional y por índice.
 POST {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/images
 Content-Type: multipart/form-data; boundary=----PizzeriaBoundary
 
 ------PizzeriaBoundary
-Content-Disposition: form-data; name="altText"
+Content-Disposition: form-data; name="altTexts"
 
 Margarita lista para servir
 ------PizzeriaBoundary
-Content-Disposition: form-data; name="file"; filename="margarita.jpg"
+Content-Disposition: form-data; name="altTexts"
+
+Detalle de la masa
+------PizzeriaBoundary
+Content-Disposition: form-data; name="files"; filename="margarita-1.jpg"
 Content-Type: image/jpeg
 
-< ./samples/margarita.jpg
+< ./samples/margarita-1.jpg
+------PizzeriaBoundary
+Content-Disposition: form-data; name="files"; filename="margarita-2.jpg"
+Content-Type: image/jpeg
+
+< ./samples/margarita-2.jpg
 ------PizzeriaBoundary--
 
 ### Borrar imagen de la pizza (reemplaza {pizzaId} y {guid}.ext por el key devuelto)
