@@ -7,6 +7,11 @@ pizzas, pedidos y repartidores.
 > Persistencia: **PostgreSQL** vía **EF Core** (provider `Npgsql`). La conexión
 > se configura por variables de entorno cargadas desde un `.env` en la raíz
 > (igual que un proyecto Nest).
+>
+> Auth: **JWT Bearer** (paquete `Microsoft.AspNetCore.Authentication.JwtBearer`)
+> con access + refresh tokens y roles `Admin`/`Client` sobre una tabla `users`
+> propia. Password hashing con `PasswordHasher<User>` (PBKDF2 + salt, el mismo
+> algoritmo que usa ASP.NET Core Identity).
 
 ## Mapeo rápido Nest -> ASP.NET
 
@@ -23,6 +28,8 @@ pizzas, pedidos y repartidores.
 | `@InjectRepository(Entity)` | Inyectar `PizzeriaDbContext` y usar `context.Xs` |
 | `.env` cargado por `@nestjs/config` | `.env` cargado al inicio de `Program.cs` con `DotNetEnv` |
 | `main.ts` (`NestFactory.create(AppModule)`) | `Program.cs` |
+| `@UseGuards(JwtAuthGuard)` / `@UseGuards(RolesGuard)` | `[Authorize]` / `[Authorize(Roles = Roles.Admin)]` |
+| `JwtStrategy` + `passport-jwt` | `AddJwtBearer(...)` con `TokenValidationParameters` |
 
 ## Estructura de carpetas
 
@@ -41,6 +48,22 @@ src/Pizzeria.API/
 │       ├── ImageFileValidator.cs       # validación compartida (tamaño, content-type)
 │       └── StorageModule.cs            # AddStorageModule: registra IAmazonS3 + IStorageService
 ├── Modules/
+│   ├── Auth/
+│   │   ├── AuthModule.cs               # AddAuthModule: DI + AddJwtBearer + AddAuthorization + seed admin
+│   │   ├── AuthController.cs           # /api/auth: sign-up, sign-in, refresh, sign-out, me
+│   │   ├── AuthService.cs / IAuthService.cs
+│   │   ├── Roles.cs                    # constantes "Admin"/"Client" (atadas al enum con nameof)
+│   │   ├── Jwt/
+│   │   │   ├── JwtOptions.cs           # leído desde .env (JWT_*)
+│   │   │   ├── IJwtTokenService.cs
+│   │   │   └── JwtTokenService.cs      # access token firmado + refresh aleatorio hasheado SHA-256
+│   │   ├── Entities/
+│   │   │   ├── User.cs
+│   │   │   ├── UserRole.cs             # enum { Admin, Client }
+│   │   │   └── RefreshToken.cs
+│   │   └── Dtos/
+│   │       ├── SignUpDto.cs / SignInDto.cs / RefreshDto.cs
+│   │       └── AuthResponseDto.cs / MeDto.cs
 │   ├── Ingredients/
 │   │   ├── IngredientsModule.cs        # registra IIngredientsService en DI
 │   │   ├── IngredientsController.cs
@@ -65,35 +88,51 @@ Implementación del service → Controller → Module** (registro en DI).
 
 ## Endpoints principales
 
+Todos los endpoints (salvo los de `/api/auth/sign-up`, `/sign-in` y `/refresh`)
+requieren `Authorization: Bearer <accessToken>`. La columna **Rol** indica quién
+puede llamarlos (ver [Autenticación](#autenticación-y-autorización) más abajo).
+
+### Auth — `/api/auth`
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| POST | `/sign-up` | público | registra un usuario nuevo (rol `Client` forzado) y devuelve tokens |
+| POST | `/sign-in` | público | login con email + password → devuelve access + refresh |
+| POST | `/refresh` | público | rota el par (access, refresh); revoca el refresh viejo |
+| POST | `/sign-out` | autenticado | revoca el refresh token enviado; el access expira solo |
+| GET | `/me` | autenticado | datos del usuario del token (`id`, `email`, `role`) |
+
 ### Ingredients — `/api/ingredients`
-- `GET /`                         lista todos
-- `GET /{code}`                   obtiene uno
-- `POST /`                        crea
-- `PATCH /{code}/stock`           suma stock
-- `POST /{code}/images`           sube **una o varias** imágenes (multipart: `files` repetido, opcional `altTexts` por índice)
-- `DELETE /{code}/images/{key}`   elimina una imagen del storage y del JSON
+| Método | Ruta | Rol |
+|---|---|---|
+| GET | `/`, `/{code}` | cualquier autenticado |
+| POST | `/` | Admin |
+| PATCH | `/{code}/stock` | Admin |
+| POST | `/{code}/images` | Admin — multipart: `files` repetido, opcional `altTexts` por índice |
+| DELETE | `/{code}/images/{key}` | Admin |
 
 ### Pizzas — `/api/pizzas`
-- `GET /`                       lista
-- `GET /{id}`                   obtiene una
-- `POST /`                      crea (valida que los ingredientes existan)
-- `GET /{id}/cost`              calcula costo = `basePrice + Σ(pricePerUnit × qty)`
-- `POST /{id}/images`           sube **una o varias** imágenes (multipart: `files` repetido, opcional `altTexts` por índice)
-- `DELETE /{id}/images/{key}`   elimina una imagen del storage y del JSON
+| Método | Ruta | Rol |
+|---|---|---|
+| GET | `/`, `/{id}`, `/{id}/cost` | cualquier autenticado — el coste se calcula como `basePrice + Σ(pricePerUnit × qty)` |
+| POST | `/` | Admin |
+| POST | `/{id}/images` | Admin |
+| DELETE | `/{id}/images/{key}` | Admin |
 
 ### Delivery persons — `/api/delivery-persons`
-- `GET /`, `GET /{code}`, `POST /`
+Todos los endpoints son **Admin**: `GET /`, `GET /{code}`, `POST /`.
 
 ### Orders — `/api/orders`
-- `GET /`, `GET /{id}`
-- `POST /`                crea un pedido. Verifica stock de TODOS los ingredientes
-  necesarios (cantidad × porciones). Si falta algo, **no** crea el pedido. Si hay
-  stock, descuenta automáticamente.
-- `PATCH /{id}/status`    cambia estado (`Pending`, `InPreparation`, `OnTheWay`,
-  `Delivered`).
-  - Al pasar a `OnTheWay`: busca un repartidor disponible, lo marca como ocupado
-    y lo asigna al pedido. Si no hay disponibles, falla.
-  - Al pasar a `Delivered`: libera al repartidor asignado.
+| Método | Ruta | Rol |
+|---|---|---|
+| GET | `/` | Admin (lista completa) |
+| GET | `/{id}` | Admin **o** el Client dueño del pedido (otro Client recibe `403 Forbidden`) |
+| POST | `/` | cualquier autenticado; el pedido se liga al `sub` del JWT automáticamente (el body nunca decide el dueño) |
+| PATCH | `/{id}/status` | Admin — cambia estado entre `Pending` → `InPreparation` → `OnTheWay` → `Delivered` |
+
+- `POST /` verifica stock de TODOS los ingredientes necesarios (`cantidad × porciones`).
+  Si falta algo, **no** crea el pedido; si hay stock, descuenta automáticamente.
+- `PATCH /{id}/status` con `OnTheWay` busca un repartidor disponible, lo marca
+  como ocupado y lo asigna al pedido; con `Delivered` lo libera.
 
 ## Setup
 
@@ -106,14 +145,33 @@ Implementación del service → Controller → Module** (registro en DI).
 
 ### 2. Variables de entorno
 
-Copia `.env.example` a `.env` en la raíz del repo y pon tus valores:
+Copia `.env.example` a `.env` en la raíz del repo y pon tus valores. Hay tres
+bloques: Postgres, Auth/JWT y Storage:
 
 ```env
+# --- PostgreSQL ---
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DB=pizzeria
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=tu_password
+
+# --- Auth / JWT ---
+JWT_SECRET=<string aleatorio de >= 32 bytes>
+JWT_ISSUER=pizzeria-api
+JWT_AUDIENCE=pizzeria-api-clients
+JWT_ACCESS_EXPIRES_MINUTES=15
+JWT_REFRESH_EXPIRES_DAYS=7
+
+# Crea el primer admin al arrancar si no hay ninguno. Idempotente.
+INITIAL_ADMIN_EMAIL=admin@pizzeria.local
+INITIAL_ADMIN_PASSWORD=change_me_on_first_run
+```
+
+Para generar un `JWT_SECRET` fuerte en PowerShell:
+
+```powershell
+[Convert]::ToBase64String([byte[]](1..48 | ForEach-Object { Get-Random -Maximum 256 }))
 ```
 
 > `DotNetEnv` carga este archivo al arranque, tanto en runtime como cuando
@@ -163,6 +221,68 @@ La API queda en `http://localhost:5202`. El OpenAPI JSON vive en
 Para probar rápido, abre `src/Pizzeria.API/Pizzeria.API.http` en VS Code / Rider
 y ejecuta los requests en orden (Ingredients → Pizzas → Delivery persons →
 Orders).
+
+## Autenticación y autorización
+
+Stack: **`Microsoft.AspNetCore.Authentication.JwtBearer`** + **`PasswordHasher<User>`**
+(viene en el shared framework de .NET 10, usa PBKDF2 + salt por usuario, formato
+versionado con `Rehash`). Se mantiene una tabla `users` propia en vez del stack
+completo de ASP.NET Core Identity para encajar con el estilo "un módulo por
+entidad" del repo.
+
+### Flujo de tokens
+
+- **Access token** (JWT firmado HS256, 15 min por defecto) con claims
+  `sub`, `email`, `role`, `jti`. Se valida contra `JWT_SECRET`/`JWT_ISSUER`/
+  `JWT_AUDIENCE` en `AuthModule`.
+- **Refresh token** (string aleatorio de 64 bytes, 7 días por defecto)
+  guardado en `refresh_tokens` como **SHA-256** (nunca el token en claro).
+  Se **rota** en cada `/refresh`: el viejo se marca `RevokedAt` y apunta
+  al nuevo vía `ReplacedByTokenId`. Si alguien reusa un refresh ya revocado,
+  se revocan TODOS los refresh activos de ese usuario (detección de robo).
+- **Sign-out** revoca el refresh token enviado. El access sigue vivo hasta
+  expirar por tiempo — es el trade-off clásico de JWT stateless.
+
+### Roles
+
+El enum `UserRole { Admin, Client }` se emite como claim `role` en el JWT y se
+persiste como string (`HasConversion<string>()`). La protección a nivel de
+endpoint usa los atributos estándar de ASP.NET Core:
+
+```csharp
+[Authorize]                              // cualquier autenticado
+[Authorize(Roles = Roles.Admin)]         // solo admin
+[AllowAnonymous]                         // abre excepciones (sign-in, sign-up...)
+```
+
+`Roles.Admin`/`Roles.Client` son `const` atadas al enum con `nameof`: si
+renombras un valor, el compilador te obliga a actualizar la constante.
+
+### Admin inicial
+
+Al arrancar, si no hay ningún usuario con rol `Admin`, `AuthModule.SeedInitialAdminAsync`
+crea uno leyendo `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD` del `.env`.
+Es idempotente: en arranques siguientes no hace nada. Si dejas esas variables
+vacías no siembra nada y la app arranca igual.
+
+### Prueba rápida del flujo
+
+```http
+# 1. Inicia sesión con el admin sembrado
+POST /api/auth/sign-in
+{ "email": "admin@pizzeria.local", "password": "change_me_on_first_run" }
+# → { "accessToken": "...", "refreshToken": "...", "user": { "role": "Admin" } }
+
+# 2. Llama a un endpoint Admin con el access token
+POST /api/pizzas
+Authorization: Bearer <accessToken>
+
+# 3. Renueva sin volver a pedir password
+POST /api/auth/refresh
+{ "refreshToken": "<refreshToken>" }
+```
+
+Los ejemplos completos están en `src/Pizzeria.API/Pizzeria.API.http`.
 
 ## Storage de imágenes
 
@@ -255,9 +375,10 @@ automáticamente.
   Por eso todos los services se registran con `AddScoped`.
 - **`AsNoTracking()`** en las lecturas: EF no trackea las entidades, más rápido
   y sin riesgo de "auto-guardar" cambios por error.
-- **Enums como string**: `OrderStatus` y `DeliveryPersonStatus` se guardan como
-  texto (`"Pending"`, `"OnTheWay"`...) con `HasConversion<string>()`. Los
-  clientes también los ven así gracias a `JsonStringEnumConverter`.
+- **Enums como string**: `OrderStatus`, `DeliveryPersonStatus` y `UserRole` se
+  guardan como texto (`"Pending"`, `"OnTheWay"`, `"Admin"`...) con
+  `HasConversion<string>()`. Los clientes también los ven así gracias a
+  `JsonStringEnumConverter`.
 - **Transacciones explícitas** en `OrdersService`: `CreateAsync` y
   `UpdateStatusAsync` abren una transacción con
   `context.Database.BeginTransactionAsync` para que verificar stock, descontar
@@ -274,3 +395,6 @@ automáticamente.
   `ProblemDetails` personalizado, en lugar del `try/catch` en controllers.
 - **Tests** por módulo (`Pizzeria.Ingredients.Tests`, etc.) usando la
   `Microsoft.EntityFrameworkCore.InMemory` para los services.
+- **Auth endurecida**: recuperación de contraseña por email, confirmación de
+  email, lockout por intentos fallidos, 2FA, y revocación inmediata del access
+  token vía denylist de `jti` (p. ej. en Redis) si la política lo exige.
