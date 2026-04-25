@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pizzeria.API.Infrastructure.Database;
@@ -11,9 +12,11 @@ using Pizzeria.API.Infrastructure.Database;
 namespace Pizzeria.API.Infrastructure.Database.Migrations
 {
     [DbContext(typeof(PizzeriaDbContext))]
-    partial class PizzeriaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260425020841_AddAuthTables")]
+    partial class AddAuthTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -169,9 +172,6 @@ namespace Pizzeria.API.Infrastructure.Database.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<Guid>("CustomerUserId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -180,8 +180,6 @@ namespace Pizzeria.API.Infrastructure.Database.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedDeliveryPersonCode");
-
-                    b.HasIndex("CustomerUserId");
 
                     b.ToTable("orders", (string)null);
                 });
@@ -282,12 +280,6 @@ namespace Pizzeria.API.Infrastructure.Database.Migrations
                         .WithMany()
                         .HasForeignKey("AssignedDeliveryPersonCode")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Pizzeria.API.Modules.Auth.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("CustomerUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Pizzeria.API.Modules.Orders.Entities.OrderItem", b =>

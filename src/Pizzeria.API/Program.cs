@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using DotNetEnv;
 using Pizzeria.API.Infrastructure.Database;
 using Pizzeria.API.Infrastructure.Storage;
+using Pizzeria.API.Modules.Auth;
 using Pizzeria.API.Modules.DeliveryPersons;
 using Pizzeria.API.Modules.Ingredients;
 using Pizzeria.API.Modules.Orders;
@@ -28,6 +29,7 @@ builder.Services.AddOpenApi();
 builder.Services
     .AddDatabaseModule()
     .AddStorageModule()
+    .AddAuthModule()
     .AddIngredientsModule()
     .AddPizzasModule()
     .AddDeliveryPersonsModule()
@@ -35,11 +37,17 @@ builder.Services
 
 var app = builder.Build();
 
+// Sembramos el admin inicial (si las variables INITIAL_ADMIN_* están en .env y
+// no existe ya ningún admin). Idempotente: no hace nada en arranques siguientes.
+await app.Services.SeedInitialAdminAsync();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.Run();

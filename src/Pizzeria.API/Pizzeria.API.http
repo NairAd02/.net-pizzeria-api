@@ -1,11 +1,62 @@
 @Pizzeria.API_HostAddress = http://localhost:5202
 
+# Tras hacer sign-in o sign-up, copia aquí el accessToken de la respuesta.
+# Todos los requests protegidos llevan 'Authorization: Bearer {{accessToken}}'.
+@accessToken = paste-access-token-here
+@refreshToken = paste-refresh-token-here
+
+
+############################################
+# Auth (sign-up / sign-in / refresh / sign-out / me)
+############################################
+
+### Sign-up: crea un usuario con rol Client y devuelve tokens
+POST {{Pizzeria.API_HostAddress}}/api/auth/sign-up
+Content-Type: application/json
+
+{
+  "email": "alice@test.com",
+  "password": "Password123!"
+}
+
+### Sign-in (admin sembrado desde .env, o el Client que acabas de crear)
+POST {{Pizzeria.API_HostAddress}}/api/auth/sign-in
+Content-Type: application/json
+
+{
+  "email": "admin@pizzeria.local",
+  "password": "change_me_on_first_run"
+}
+
+### Refresh: cambia el par (access, refresh) por uno nuevo
+POST {{Pizzeria.API_HostAddress}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### Sign-out: revoca el refresh token actual (requiere access token válido)
+POST {{Pizzeria.API_HostAddress}}/api/auth/sign-out
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### /me: datos del usuario actual
+GET {{Pizzeria.API_HostAddress}}/api/auth/me
+Authorization: Bearer {{accessToken}}
+
+
 ############################################
 # Ingredients
 ############################################
 
-### Crear ingrediente: masa
+### Crear ingrediente: masa (requiere Admin)
 POST {{Pizzeria.API_HostAddress}}/api/ingredients
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -16,8 +67,9 @@ Content-Type: application/json
   "supplier": "Harinas del Sur"
 }
 
-### Crear ingrediente: salsa
+### Crear ingrediente: salsa (requiere Admin)
 POST {{Pizzeria.API_HostAddress}}/api/ingredients
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -28,8 +80,9 @@ Content-Type: application/json
   "supplier": "Conservas Italia"
 }
 
-### Crear ingrediente: queso
+### Crear ingrediente: queso (requiere Admin)
 POST {{Pizzeria.API_HostAddress}}/api/ingredients
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -40,8 +93,9 @@ Content-Type: application/json
   "supplier": "Lácteos del Valle"
 }
 
-### Crear ingrediente: albahaca
+### Crear ingrediente: albahaca (requiere Admin)
 POST {{Pizzeria.API_HostAddress}}/api/ingredients
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -52,16 +106,19 @@ Content-Type: application/json
   "supplier": "Hierbas Frescas"
 }
 
-### Listar ingredientes
+### Listar ingredientes (cualquier autenticado)
 GET {{Pizzeria.API_HostAddress}}/api/ingredients
+Authorization: Bearer {{accessToken}}
 Accept: application/json
 
-### Consultar uno
+### Consultar uno (cualquier autenticado)
 GET {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO
+Authorization: Bearer {{accessToken}}
 Accept: application/json
 
-### Reponer stock
+### Reponer stock (requiere Admin)
 PATCH {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO/stock
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -72,6 +129,7 @@ Content-Type: application/json
 ### Repetir el campo 'files' por cada imagen. 'altTexts' es opcional; se empareja
 ### por índice (i-ésimo altText ↔ i-ésimo file). Ajusta las rutas de ./samples/*.
 POST {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO/images
+Authorization: Bearer {{accessToken}}
 Content-Type: multipart/form-data; boundary=----PizzeriaBoundary
 
 ------PizzeriaBoundary
@@ -94,16 +152,18 @@ Content-Type: image/jpeg
 < ./samples/queso-bloque.jpg
 ------PizzeriaBoundary--
 
-### Borrar imagen del ingrediente (reemplaza {guid}.ext por el key devuelto al subirla)
+### Borrar imagen del ingrediente (requiere Admin; reemplaza {guid}.ext por el key devuelto al subirla)
 DELETE {{Pizzeria.API_HostAddress}}/api/ingredients/ING-QUESO/images/ingredients/ING-QUESO/{guid}.jpg
+Authorization: Bearer {{accessToken}}
 
 
 ############################################
 # Pizzas
 ############################################
 
-### Crear pizza Margarita
+### Crear pizza Margarita (requiere Admin)
 POST {{Pizzeria.API_HostAddress}}/api/pizzas
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -117,17 +177,20 @@ Content-Type: application/json
   ]
 }
 
-### Listar pizzas
+### Listar pizzas (cualquier autenticado)
 GET {{Pizzeria.API_HostAddress}}/api/pizzas
+Authorization: Bearer {{accessToken}}
 Accept: application/json
 
-### Calcular costo (reemplaza {pizzaId} por el Id que devolvió el POST)
+### Calcular costo (cualquier autenticado; reemplaza {pizzaId} por el Id que devolvió el POST)
 GET {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/cost
+Authorization: Bearer {{accessToken}}
 Accept: application/json
 
 ### Subir varias imágenes a una pizza en una sola request
 ### Repetir 'files' por cada imagen; 'altTexts' opcional y por índice.
 POST {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/images
+Authorization: Bearer {{accessToken}}
 Content-Type: multipart/form-data; boundary=----PizzeriaBoundary
 
 ------PizzeriaBoundary
@@ -150,16 +213,18 @@ Content-Type: image/jpeg
 < ./samples/margarita-2.jpg
 ------PizzeriaBoundary--
 
-### Borrar imagen de la pizza (reemplaza {pizzaId} y {guid}.ext por el key devuelto)
+### Borrar imagen de la pizza (requiere Admin; reemplaza {pizzaId} y {guid}.ext por el key devuelto)
 DELETE {{Pizzeria.API_HostAddress}}/api/pizzas/{pizzaId}/images/pizzas/{pizzaId}/{guid}.jpg
+Authorization: Bearer {{accessToken}}
 
 
 ############################################
 # Delivery persons (repartidores)
 ############################################
 
-### Crear repartidor
+### Crear repartidor (requiere Admin)
 POST {{Pizzeria.API_HostAddress}}/api/delivery-persons
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -168,8 +233,9 @@ Content-Type: application/json
   "phone": "555-1234"
 }
 
-### Listar repartidores
+### Listar repartidores (requiere Admin)
 GET {{Pizzeria.API_HostAddress}}/api/delivery-persons
+Authorization: Bearer {{accessToken}}
 Accept: application/json
 
 
@@ -177,8 +243,9 @@ Accept: application/json
 # Orders (pedidos)
 ############################################
 
-### Crear pedido (reemplaza {pizzaId} por el Id real)
+### Crear pedido (cualquier autenticado; el pedido queda asociado al user del token)
 POST {{Pizzeria.API_HostAddress}}/api/orders
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -189,28 +256,37 @@ Content-Type: application/json
   ]
 }
 
-### Listar pedidos
+### Listar pedidos (requiere Admin)
 GET {{Pizzeria.API_HostAddress}}/api/orders
+Authorization: Bearer {{accessToken}}
 Accept: application/json
 
-### Cambiar a "InPreparation" (reemplaza {orderId})
+### Consultar un pedido (Admin ve cualquiera; Client solo el suyo)
+GET {{Pizzeria.API_HostAddress}}/api/orders/{orderId}
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Cambiar a "InPreparation" (requiere Admin; reemplaza {orderId})
 PATCH {{Pizzeria.API_HostAddress}}/api/orders/{orderId}/status
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
   "status": "InPreparation"
 }
 
-### Cambiar a "OnTheWay" (asigna un repartidor disponible)
+### Cambiar a "OnTheWay" (requiere Admin; asigna un repartidor disponible)
 PATCH {{Pizzeria.API_HostAddress}}/api/orders/{orderId}/status
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
   "status": "OnTheWay"
 }
 
-### Cambiar a "Delivered" (libera al repartidor)
+### Cambiar a "Delivered" (requiere Admin; libera al repartidor)
 PATCH {{Pizzeria.API_HostAddress}}/api/orders/{orderId}/status
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {

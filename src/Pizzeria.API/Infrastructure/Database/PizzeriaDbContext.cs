@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Pizzeria.API.Infrastructure.Storage;
+using Pizzeria.API.Modules.Auth.Entities;
 using Pizzeria.API.Modules.DeliveryPersons.Entities;
 using Pizzeria.API.Modules.Ingredients.Entities;
 using Pizzeria.API.Modules.Orders.Entities;
@@ -24,6 +25,8 @@ public class PizzeriaDbContext(DbContextOptions<PizzeriaDbContext> options) : Db
     public DbSet<DeliveryPerson> DeliveryPersons => Set<DeliveryPerson>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     // Serializador compartido para las columnas jsonb de ProductImage[].
     private static readonly JsonSerializerOptions ImagesJsonOptions = new()
@@ -54,6 +57,7 @@ public class PizzeriaDbContext(DbContextOptions<PizzeriaDbContext> options) : Db
         ConfigurePizzas(modelBuilder);
         ConfigureDeliveryPersons(modelBuilder);
         ConfigureOrders(modelBuilder);
+        ConfigureAuth(modelBuilder);
     }
 
     private static void ConfigureIngredients(ModelBuilder modelBuilder)
@@ -139,6 +143,7 @@ public class PizzeriaDbContext(DbContextOptions<PizzeriaDbContext> options) : Db
             b.ToTable("orders");
             b.HasKey(o => o.Id);
             b.Property(o => o.Id).HasMaxLength(64);
+            b.Property(o => o.CustomerUserId);
             b.Property(o => o.CustomerName).HasMaxLength(200).IsRequired();
             b.Property(o => o.CustomerPhone).HasMaxLength(50).IsRequired();
             b.Property(o => o.CreatedAt);
@@ -158,6 +163,16 @@ public class PizzeriaDbContext(DbContextOptions<PizzeriaDbContext> options) : Db
                 .HasForeignKey(o => o.AssignedDeliveryPersonCode)
                 .HasPrincipalKey(d => d.Code)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Un usuario con pedidos históricos no puede borrarse (Restrict),
+            // y consultamos por dueño usando este índice.
+            b.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(o => o.CustomerUserId)
+                .HasPrincipalKey(u => u.Id)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            b.HasIndex(o => o.CustomerUserId);
         });
 
         modelBuilder.Entity<OrderItem>(b =>
@@ -174,6 +189,44 @@ public class PizzeriaDbContext(DbContextOptions<PizzeriaDbContext> options) : Db
                 .HasForeignKey(i => i.PizzaId)
                 .HasPrincipalKey(p => p.Id)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureAuth(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<User>(b =>
+        {
+            b.ToTable("users");
+            b.HasKey(u => u.Id);
+            b.Property(u => u.Email).HasMaxLength(254).IsRequired();
+            b.Property(u => u.PasswordHash).IsRequired();
+            b.Property(u => u.Role)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+            b.Property(u => u.CreatedAt);
+
+            b.HasIndex(u => u.Email).IsUnique();
+        });
+
+        modelBuilder.Entity<RefreshToken>(b =>
+        {
+            b.ToTable("refresh_tokens");
+            b.HasKey(t => t.Id);
+            b.Property(t => t.TokenHash).HasMaxLength(128).IsRequired();
+            b.Property(t => t.ExpiresAt);
+            b.Property(t => t.CreatedAt);
+            b.Property(t => t.RevokedAt);
+            b.Property(t => t.ReplacedByTokenId);
+            b.Ignore(t => t.IsActive);
+
+            b.HasIndex(t => t.TokenHash).IsUnique();
+            b.HasIndex(t => t.UserId);
+
+            b.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .HasPrincipalKey(u => u.Id)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
