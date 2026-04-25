@@ -24,7 +24,7 @@ public class OrdersService(PizzeriaDbContext context) : IOrdersService
             .Include(o => o.Items)
             .FirstOrDefaultAsync(o => o.Id == id, ct);
 
-    public async Task<Order> CreateAsync(CreateOrderDto dto, CancellationToken ct = default)
+    public async Task<Order> CreateAsync(CreateOrderDto dto, Guid customerUserId, CancellationToken ct = default)
     {
         if (dto.Items is null || dto.Items.Count == 0)
         {
@@ -109,6 +109,7 @@ public class OrdersService(PizzeriaDbContext context) : IOrdersService
             var order = new Order
             {
                 Id = Guid.NewGuid().ToString(),
+                CustomerUserId = customerUserId,
                 CustomerName = dto.CustomerName,
                 CustomerPhone = dto.CustomerPhone,
                 Items = dto.Items

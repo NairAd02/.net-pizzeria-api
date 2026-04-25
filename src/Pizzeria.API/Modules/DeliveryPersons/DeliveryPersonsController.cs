@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Pizzeria.API.Modules.Auth;
 using Pizzeria.API.Modules.DeliveryPersons.Dtos;
 using Pizzeria.API.Modules.DeliveryPersons.Entities;
 
@@ -6,6 +8,7 @@ namespace Pizzeria.API.Modules.DeliveryPersons;
 
 [ApiController]
 [Route("api/delivery-persons")]
+[Authorize(Roles = Roles.Admin)] // toda la gestión de repartidores es solo para Admin.
 public class DeliveryPersonsController(IDeliveryPersonsService deliveryPersonsService) : ControllerBase
 {
     [HttpGet]

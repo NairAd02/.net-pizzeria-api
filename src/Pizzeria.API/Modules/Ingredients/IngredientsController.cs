@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Pizzeria.API.Modules.Auth;
 using Pizzeria.API.Modules.Ingredients.Dtos;
 using Pizzeria.API.Modules.Ingredients.Entities;
 
@@ -6,6 +8,7 @@ namespace Pizzeria.API.Modules.Ingredients;
 
 [ApiController]
 [Route("api/ingredients")]
+[Authorize] // por defecto todos los endpoints requieren JWT válido; las mutaciones bajan a Admin.
 public class IngredientsController(IIngredientsService ingredientsService) : ControllerBase
 {
     [HttpGet]
@@ -20,6 +23,7 @@ public class IngredientsController(IIngredientsService ingredientsService) : Con
     }
 
     [HttpPost]
+    [Authorize(Roles = Roles.Admin)]
     public async Task<ActionResult<Ingredient>> Create([FromBody] CreateIngredientDto dto, CancellationToken ct)
     {
         try
@@ -34,6 +38,7 @@ public class IngredientsController(IIngredientsService ingredientsService) : Con
     }
 
     [HttpPatch("{code}/stock")]
+    [Authorize(Roles = Roles.Admin)]
     public async Task<ActionResult<Ingredient>> AddStock(string code, [FromBody] UpdateStockDto dto, CancellationToken ct)
     {
         try
@@ -51,6 +56,7 @@ public class IngredientsController(IIngredientsService ingredientsService) : Con
     }
 
     [HttpPost("{code}/images")]
+    [Authorize(Roles = Roles.Admin)]
     [RequestSizeLimit(50_000_000)] // tope duro del request (varios archivos); el tamaño por archivo se valida en el service
     public async Task<ActionResult<Ingredient>> AddImages(
         string code,
@@ -75,6 +81,7 @@ public class IngredientsController(IIngredientsService ingredientsService) : Con
     }
 
     [HttpDelete("{code}/images/{**objectKey}")]
+    [Authorize(Roles = Roles.Admin)]
     public async Task<ActionResult<Ingredient>> RemoveImage(string code, string objectKey, CancellationToken ct)
     {
         try

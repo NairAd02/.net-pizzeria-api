@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Pizzeria.API.Modules.Auth;
 using Pizzeria.API.Modules.Pizzas.Dtos;
 using Pizzeria.API.Modules.Pizzas.Entities;
 
@@ -6,6 +8,7 @@ namespace Pizzeria.API.Modules.Pizzas;
 
 [ApiController]
 [Route("api/pizzas")]
+[Authorize] // cualquier autenticado puede ver; las mutaciones bajan a Admin.
 public class PizzasController(IPizzasService pizzasService) : ControllerBase
 {
     [HttpGet]
@@ -20,6 +23,7 @@ public class PizzasController(IPizzasService pizzasService) : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = Roles.Admin)]
     public async Task<ActionResult<Pizza>> Create([FromBody] CreatePizzaDto dto, CancellationToken ct)
     {
         try
@@ -51,6 +55,7 @@ public class PizzasController(IPizzasService pizzasService) : ControllerBase
     }
 
     [HttpPost("{id}/images")]
+    [Authorize(Roles = Roles.Admin)]
     [RequestSizeLimit(50_000_000)] // tope duro del request (varios archivos); el tamaño por archivo se valida en el service
     public async Task<ActionResult<Pizza>> AddImages(
         string id,
@@ -75,6 +80,7 @@ public class PizzasController(IPizzasService pizzasService) : ControllerBase
     }
 
     [HttpDelete("{id}/images/{**objectKey}")]
+    [Authorize(Roles = Roles.Admin)]
     public async Task<ActionResult<Pizza>> RemoveImage(string id, string objectKey, CancellationToken ct)
     {
         try
